@@ -14,6 +14,16 @@ export function sortByNewest(jobs: Job[]): Job[] {
     );
 }
 
+/** Return jobs in the selected department, or all jobs when no department is selected. */
+export function filterByDepartment(jobs: Job[], department: string): Job[] {
+    return department ? jobs.filter((job) => job.department === department) : [...jobs];
+}
+
+/** Return jobs in the selected location, or all jobs when no location is selected. */
+export function filterByLocation(jobs: Job[], location: string): Job[] {
+    return location ? jobs.filter((job) => job.location === location) : [...jobs];
+}
+
 /**
  * Format an ISO-8601 date as a human-readable posted date,
  * e.g. "January 5, 2027". Falls back to the raw value if unparseable.

@@ -1,13 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { sortByNewest, formatPostedDate } from './jobs';
+import {
+    filterByDepartment,
+    filterByLocation,
+    formatPostedDate,
+    sortByNewest,
+} from './jobs';
 import type { Job } from '../types/job';
 
-function makeJob(slug: string, postedDate: string): Job {
+/** Build a minimal job fixture with overridable department and location values. */
+function makeJob(
+    slug: string,
+    postedDate: string,
+    department = 'Technology',
+    location = 'Remote',
+): Job {
     return {
         slug,
         title: `Role ${slug}`,
-        department: 'Technology',
-        location: 'Remote',
+        department,
+        location,
         type: 'Full-time',
         remote: true,
         postedDate,
@@ -30,6 +41,84 @@ describe('sortByNewest', () => {
         const original = jobs.map((j) => j.slug);
         sortByNewest(jobs);
         expect(jobs.map((j) => j.slug)).toEqual(original);
+    });
+});
+
+describe('filterByDepartment', () => {
+    const jobs = [
+        makeJob('engineer', '2027-01-01', 'Technology', 'Remote'),
+        makeJob('scientist', '2027-01-02', 'Research', 'Boston, MA'),
+        makeJob('analyst', '2027-01-03', 'Technology', 'Seattle, WA'),
+    ];
+
+    it('returns jobs in the selected department', () => {
+        expect(filterByDepartment(jobs, 'Technology').map((job) => job.slug)).toEqual([
+            'engineer',
+            'analyst',
+        ]);
+    });
+
+    it('returns every job when no department is selected', () => {
+        expect(filterByDepartment(jobs, '')).toEqual(jobs);
+    });
+
+    it('returns no jobs for an unmatched department', () => {
+        expect(filterByDepartment(jobs, 'Legal')).toEqual([]);
+    });
+});
+
+describe('filterByLocation', () => {
+    const jobs = [
+        makeJob('engineer', '2027-01-01', 'Technology', 'Remote'),
+        makeJob('scientist', '2027-01-02', 'Research', 'Boston, MA'),
+        makeJob('analyst', '2027-01-03', 'Technology', 'Remote'),
+    ];
+
+    it('returns jobs in the selected location', () => {
+        expect(filterByLocation(jobs, 'Remote').map((job) => job.slug)).toEqual([
+            'engineer',
+            'analyst',
+        ]);
+    });
+
+    it('returns every job when no location is selected', () => {
+        expect(filterByLocation(jobs, '')).toEqual(jobs);
+    });
+
+    it('returns no jobs for an unmatched location', () => {
+        expect(filterByLocation(jobs, 'New York, NY')).toEqual([]);
+    });
+});
+
+describe('combined job filters', () => {
+    const jobs = [
+        makeJob('remote-engineer', '2027-01-01', 'Technology', 'Remote'),
+        makeJob('seattle-engineer', '2027-01-02', 'Technology', 'Seattle, WA'),
+        makeJob('boston-scientist', '2027-01-03', 'Research', 'Boston, MA'),
+    ];
+
+    it('combines department and location selections with AND', () => {
+        const matches = filterByLocation(
+            filterByDepartment(jobs, 'Technology'),
+            'Seattle, WA',
+        );
+        expect(matches.map((job) => job.slug)).toEqual(['seattle-engineer']);
+    });
+
+    it('returns no jobs when the selected filters do not overlap', () => {
+        const matches = filterByLocation(
+            filterByDepartment(jobs, 'Technology'),
+            'Boston, MA',
+        );
+        expect(matches).toEqual([]);
+    });
+
+    it('reset selections restore all jobs', () => {
+        const matches = filterByLocation(
+            filterByDepartment(jobs, ''),
+            '',
+        );
+        expect(matches).toEqual(jobs);
     });
 });
 
