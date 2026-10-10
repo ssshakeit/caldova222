@@ -12,6 +12,12 @@ const entries = await getCollection('jobs');
 const jobs: Job[] = sortByNewest(
     entries.map((entry) => ({ slug: entry.id, ...entry.data })),
 );
+const departments = [...new Set(jobs.map((job) => job.department))].sort((a, b) =>
+    a.localeCompare(b),
+);
+const locations = [...new Set(jobs.map((job) => job.location))].sort((a, b) =>
+    a.localeCompare(b),
+);
 ---
 
 <Layout title="Caldova Careers — Open roles">
@@ -29,12 +35,171 @@ const jobs: Job[] = sortByNewest(
     {jobs.length === 0 ? (
       <EmptyState text="There are no open roles right now. Check back soon." />
     ) : (
-      <div
-        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-        data-testid="roles-grid"
-      >
-        {jobs.map((job) => <RoleCard job={job} />)}
-      </div>
+      <>
+        <fieldset
+          class="mb-6 rounded-xl border border-slate-700 bg-slate-800/50 p-4 sm:p-6"
+          data-testid="role-filters"
+          data-jobs={JSON.stringify(jobs)}
+        >
+          <legend class="px-2 text-sm font-semibold text-slate-200">Filter roles</legend>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <div>
+              <label
+                for="department-filter"
+                class="mb-2 block text-sm font-medium text-slate-200"
+              >
+                Department
+              </label>
+              <select
+                id="department-filter"
+                class="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                data-testid="department-filter"
+              >
+                <option value="">All departments</option>
+                {departments.map((department) => (
+                  <option value={department}>{department}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                for="location-filter"
+                class="mb-2 block text-sm font-medium text-slate-200"
+              >
+                Location
+              </label>
+              <select
+                id="location-filter"
+                class="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                data-testid="location-filter"
+              >
+                <option value="">All locations</option>
+                {locations.map((location) => (
+                  <option value={location}>{location}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+              data-testid="filter-reset"
+            >
+              Reset filters
+            </button>
+          </div>
+        </fieldset>
+
+        <div
+          class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          data-testid="roles-grid"
+        >
+          {jobs.map((job) => <RoleCard job={job} />)}
+        </div>
+
+        <div
+          class="mt-6"
+          data-testid="filter-empty-state"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <EmptyState text="No roles match those filters. Try a different selection or reset the filters." />
+        </div>
+      </>
     )}
   </div>
 </Layout>
+
+<script>
+  import {
+    filterByDepartment,
+    filterByLocation,
+  } from '../lib/jobs';
+  import type { Job } from '../types/job';
+
+  /** Check whether an unknown JSON value has the fields required by the role list. */
+  function isJob(value: unknown): value is Job {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const job = value as Record<string, unknown>;
+    return (
+      typeof job.slug === 'string' &&
+      typeof job.title === 'string' &&
+      typeof job.department === 'string' &&
+      typeof job.location === 'string' &&
+      (job.type === 'Full-time' ||
+        job.type === 'Part-time' ||
+        job.type === 'Contract') &&
+      typeof job.remote === 'boolean' &&
+      typeof job.postedDate === 'string' &&
+      typeof job.summary === 'string'
+    );
+  }
+
+  const filterRoot = document.querySelector<HTMLFieldSetElement>(
+    '[data-testid="role-filters"]',
+  );
+
+  if (filterRoot) {
+    const departmentSelect = filterRoot.querySelector<HTMLSelectElement>(
+      '[data-testid="department-filter"]',
+    );
+    const locationSelect = filterRoot.querySelector<HTMLSelectElement>(
+      '[data-testid="location-filter"]',
+    );
+    const resetButton = filterRoot.querySelector<HTMLButtonElement>(
+      '[data-testid="filter-reset"]',
+    );
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="role-card"]'),
+    );
+    const emptyState = document.querySelector<HTMLElement>(
+      '[data-testid="filter-empty-state"]',
+    );
+
+    if (!departmentSelect || !locationSelect || !resetButton || !emptyState) {
+      throw new Error('The role filters are missing a required control or result element.');
+    }
+    const departmentControl = departmentSelect;
+    const locationControl = locationSelect;
+    const resetControl = resetButton;
+    const resultsEmptyState = emptyState;
+
+    const serializedJobs = filterRoot.dataset.jobs;
+    if (!serializedJobs) {
+      throw new Error('The role filters are missing their job data.');
+    }
+
+    const parsedJobs: unknown = JSON.parse(serializedJobs);
+    if (!Array.isArray(parsedJobs) || !parsedJobs.every(isJob)) {
+      throw new Error('The role filters received invalid job data.');
+    }
+    const jobs: Job[] = parsedJobs;
+
+    /** Apply both selected filters to the rendered role cards and empty state. */
+    function updateResults(): void {
+      const matchingJobs = filterByLocation(
+        filterByDepartment(jobs, departmentControl.value),
+        locationControl.value,
+      );
+      const matchingSlugs = new Set(matchingJobs.map((job) => job.slug));
+
+      for (const card of cards) {
+        card.hidden = !matchingSlugs.has(card.dataset.jobId ?? '');
+      }
+      resultsEmptyState.hidden = matchingJobs.length > 0;
+    }
+
+    departmentControl.addEventListener('change', updateResults);
+    locationControl.addEventListener('change', updateResults);
+    resetControl.addEventListener('click', () => {
+      departmentControl.value = '';
+      locationControl.value = '';
+      updateResults();
+    });
+  }
+</script>
